@@ -212,17 +212,36 @@ class Gemma2Attention(nn.Module):
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        device_cache = hidden_states.device
+
+        hidden_states = hidden_states.to(device=1)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(device=1)
+        if position_ids is not None:
+            position_ids = position_ids.to(device=1)
+        if cache_position is not None:
+            cache_position = cache_position.to(device=1)
+
         bsz, q_len, _ = hidden_states.size()
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+        torch.cuda.empty_cache()
+    
+        q_proj = (self.q_proj).to(device=1)
+        k_proj = (self.k_proj).to(device=1)
+        v_proj = (self.v_proj).to(device=1)
+
+        query_states = q_proj(hidden_states)
+        key_states = k_proj(hidden_states)
+        value_states = v_proj(hidden_states)
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        cos, sin = self.rotary_emb(value_states, position_ids)
+
+        rotary_emb = (self.rotary_emb).to(device=1)
+
+        cos, sin = rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
@@ -263,11 +282,16 @@ class Gemma2Attention(nn.Module):
         attn_output = attn_output.transpose(1, 2).contiguous()
 
         attn_output = attn_output.view(bsz, q_len, -1)
-        attn_output = self.o_proj(attn_output)
+
+        o_proj = (self.o_proj).to(device=1)
+        attn_output = o_proj(attn_output)
 
         if not output_attentions:
             attn_weights = None
 
+        attn_output = attn_output.to(device=device_cache)
+        if attn_weights is not None:
+            attn_weights = attn_weights.to(device=device_cache)
         return attn_output, attn_weights, past_key_value
 
 
