@@ -224,11 +224,12 @@ class Gemma2Attention(nn.Module):
 
         bsz, q_len, _ = hidden_states.size()
 
-        torch.cuda.empty_cache()
     
         q_proj = (self.q_proj).to(device=1)
         k_proj = (self.k_proj).to(device=1)
         v_proj = (self.v_proj).to(device=1)
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
 
         query_states = q_proj(hidden_states)
         key_states = k_proj(hidden_states)
@@ -292,6 +293,8 @@ class Gemma2Attention(nn.Module):
         attn_output = attn_output.to(device=device_cache)
         if attn_weights is not None:
             attn_weights = attn_weights.to(device=device_cache)
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
         return attn_output, attn_weights, past_key_value
 
 
