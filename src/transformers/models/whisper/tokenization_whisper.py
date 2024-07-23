@@ -872,8 +872,11 @@ class WhisperTokenizer(PreTrainedTokenizer):
     @staticmethod
     def _convert_to_list(token_ids):
         # convert type to ndarray if necessary
-        if "torch" in str(type(token_ids)) or "tensorflow" in str(type(token_ids)) and hasattr(token_ids, "numpy"):
-            token_ids = token_ids.numpy()
+        if hasattr(token_ids, "numpy"):
+            if "torch" in str(type(token_ids)):
+                token_ids = token_ids.cpu().numpy()
+            elif "tensorflow" in str(type(token_ids)):
+                token_ids = token_ids.numpy()
         # now the token ids are either a numpy array, or a list of lists
         if isinstance(token_ids, np.ndarray):
             token_ids = token_ids.tolist()
@@ -1030,7 +1033,7 @@ def _decode_asr(tokenizer, model_outputs, *, return_timestamps, return_language,
                         chunk["text"] = resolved_text
                         if return_timestamps == "word":
                             chunk["words"] = _collate_word_timestamps(
-                                tokenizer, resolved_tokens, resolved_token_timestamps, last_language
+                                tokenizer, resolved_tokens, resolved_token_timestamps, last_language, return_language
                             )
                         chunks.append(chunk)
 
@@ -1082,7 +1085,7 @@ def _decode_asr(tokenizer, model_outputs, *, return_timestamps, return_language,
         chunk["text"] = resolved_text
         if return_timestamps == "word":
             chunk["words"] = _collate_word_timestamps(
-                tokenizer, resolved_tokens, resolved_token_timestamps, last_language
+                tokenizer, resolved_tokens, resolved_token_timestamps, last_language, return_language
             )
         chunks.append(chunk)
 
@@ -1214,12 +1217,16 @@ def _find_longest_common_sequence(sequences, token_timestamp_sequences=None):
         return total_sequence, []
 
 
-def _collate_word_timestamps(tokenizer, tokens, token_timestamps, language):
+def _collate_word_timestamps(tokenizer, tokens, token_timestamps, language, return_language):
     words, _, token_indices = _combine_tokens_into_words(tokenizer, tokens, language)
+
+    optional_language_field = {"language": language} if return_language else {}
+
     timings = [
         {
             "text": word,
             "timestamp": (token_timestamps[indices[0]][0], token_timestamps[indices[-1]][1]),
+            **optional_language_field,
         }
         for word, indices in zip(words, token_indices)
     ]
